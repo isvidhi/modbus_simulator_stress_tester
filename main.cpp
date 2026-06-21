@@ -21,13 +21,24 @@ void print_executable_info(){
 int main() {
     print_executable_info();
 
+    ModbusConfig config;
+    config.type = ModbusConfig::Type::TCP;
+    config.ip = "127.0.0.1"; // Listening on localhost
+    config.port = 5020;      // Standard port for Modbus simulations
+
+    // Set memory size
+    config.map = {100, 100, 100, 100};
+
     try {
         // Create simulator: 100 Coils, 100 Input bits, 100 Holding Regs, 100 Input Regs
-        ModbusConfig config{ModbusConfig::Type::RTU, "", 0, "/dev/ttyUSB0", 9600, 'N', 8, 1, 1};
+        // ModbusConfig config{ModbusConfig::Type::RTU, "", 0, "/dev/ttyUSB0", 9600, 'N', 8, 1, 1};
         ModbusSimulator sim(config);
+        std::cout << "Starting Modbus TCP Simulator on "
+                  << config.ip << ":" << config.port << "..." << std::endl;
         sim.run();
     } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
+        std::cerr << "Failed to start simulator: " << e.what() << std::endl;
+        return 1;
     }
     return 0;
 }
