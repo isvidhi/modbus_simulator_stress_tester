@@ -75,6 +75,15 @@ configure_file(
 set(src_files
     ${PROJECT_SOURCE_DIR}/main.cpp
     ${PROJECT_SOURCE_DIR}/include/version.h
+
+    ${PROJECT_SOURCE_DIR}/include/modbus_config.hpp
+    ${PROJECT_SOURCE_DIR}/src/modbus_config.cpp
+
+    ${PROJECT_SOURCE_DIR}/include/modbus_factory.hpp
+    ${PROJECT_SOURCE_DIR}/src/modbus_factory.cpp
+
+    ${PROJECT_SOURCE_DIR}/include/modbus_simulator.hpp
+    ${PROJECT_SOURCE_DIR}/src/modbus_simulator.cpp
 )
 
 message(STATUS "List [Source Files]: ${src_files}")

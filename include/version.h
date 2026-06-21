@@ -9,7 +9,7 @@
 #define PROJECT_NAME_STRING "modbus_slave"
 #define BUILD_TYPE ""
 #define CMAKE_SYSTEM_NAME "Darwin"
-#define BUILD_TIMESTAMP "2026-06-21 20:46:56"
-#define GIT_HASH "da11936"
+#define BUILD_TIMESTAMP "2026-06-21 21:15:10"
+#define GIT_HASH "c2066ce"
 
 #endif // VERSION_H_IN

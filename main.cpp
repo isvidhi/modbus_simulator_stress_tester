@@ -1,8 +1,7 @@
 
 #include <iostream>
-
 #include "include/version.h"
-
+#include "include/modbus_simulator.hpp"
 
 void print_executable_info(){
 
@@ -21,5 +20,14 @@ void print_executable_info(){
 
 int main() {
     print_executable_info();
+
+    try {
+        // Create simulator: 100 Coils, 100 Input bits, 100 Holding Regs, 100 Input Regs
+        ModbusConfig config{ModbusConfig::Type::RTU, "", 0, "/dev/ttyUSB0", 9600, 'N', 8, 1, 1};
+        ModbusSimulator sim(config);
+        sim.run();
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
     return 0;
 }
