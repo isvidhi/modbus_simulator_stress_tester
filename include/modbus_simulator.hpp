@@ -6,6 +6,8 @@
 #include <iostream>
 #include <vector>
 #include <stdexcept>
+#include <chrono>
+#include <thread>
 
 #include "include/modbus_config.hpp"
 #include "include/modbus_factory.hpp"
@@ -24,6 +26,7 @@ private:
     bool write_holding_register(int address, uint16_t value);
     bool write_coil(int address, uint8_t value);
     bool write_holding_registers(int address, int count, const uint16_t* values);
+    // void process_request(ctx, query, rc);
 
 public:
     ModbusSimulator(const ModbusConfig& config);

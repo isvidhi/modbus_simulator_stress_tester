@@ -58,18 +58,93 @@ ModbusSimulator::~ModbusSimulator() {
     modbus_free(ctx);
 }
 
-void ModbusSimulator::run() {
-    std::cout << "[ModbuSimulator] run ( " << this << " )" << std::endl;
-    if (type == ModbusConfig::Type::TCP) {
-        int s = modbus_tcp_listen(ctx, 1);
-        modbus_tcp_accept(ctx, &s);
-    }
-    else{
-        modbus_connect(ctx); // Necessary for RTU
-    }
+// void ModbusSimulator::run() {
+//     std::cout << "[ModbuSimulator] run ( " << this << " )" << std::endl;
+//     if (type == ModbusConfig::Type::TCP) {
+//         int s = modbus_tcp_listen(ctx, 1);
+//         modbus_tcp_accept(ctx, &s);
+//     }
+//     else{
+//         modbus_connect(ctx); // Necessary for RTU
+//     }
 
-    // Shared loop logic
-    uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
+//     // Shared loop logic
+//     uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
+
+//     // To monitor Holding Registers and Coils
+//     // Create a buffer to hold the previous state of Holding Registers
+//     std::vector<uint16_t> prev_registers(mapping->nb_registers);
+
+//     // Create a buffer to hold the previous state of Coils
+//     std::vector<uint8_t> prev_coils(mapping->nb_bits);
+
+//     // Initialize Holding Register Buffer
+//     for(int i = 0; i < mapping->nb_registers; ++i){
+//         prev_registers[i] = mapping->tab_registers[i];
+//     }
+
+//     // Initialize Holding Register Buffer
+//     for(int i=0; i < mapping->nb_bits; ++i){
+//         prev_coils[i] = mapping->tab_bits[i];
+//     }
+
+//     while(true){
+
+//         int rc = modbus_receive(ctx, query);
+
+//         if (rc > 0) {
+//             // modbus_reply handles everything:
+//             // 1. Decodes function codes (Read Coils, Write Regs, etc.)
+//             // 2. Validates address ranges against mb_mapping
+//             // 3. Modifies mb_mapping (on Write) or reads from it (on Read)
+//             // 4. Sends the response back to the Master
+//             modbus_reply(ctx, query, rc, mapping);
+
+//             // introspection for write
+//             uint8_t function_code = query[FUNCTION_CODE_INDEX];
+
+//             // Holding Registers (FC 06, 16)
+//             // If query[7] == 0x06: The master wrote a single Register.
+//             // If query[7] == 0x10: The master wrote multiple Registers.
+//             if (function_code == 0x06 || function_code == 0x10) {
+//                 // Run the delta-check loop to scan for changes (The "Delta" check)
+//                 for (int i = 0; i < mapping->nb_registers; ++i) {
+//                     if (mapping->tab_registers[i] != prev_registers[i]) {
+//                         std::cout << "[REG LOG] Holding Register " << i
+//                                   << " changed: " << prev_registers[i]
+//                                   << " -> " << mapping->tab_registers[i]
+//                                   << std::endl;
+
+//                         // Update our snapshot
+//                         prev_registers[i] = mapping->tab_registers[i];
+//                     }
+//                 }
+//             }
+
+//             // Coils (FC 05, 15)
+//             // If query[7] == 0x05: The master wrote a single Coil.
+//             // If query[7] == 0x0f: The master wrote multiple Coils.
+//             if (function_code == 0x05 || function_code == 0x0f) {
+//                 for (int i = 0; i < mapping->nb_bits; ++i) {
+//                     if (mapping->tab_bits[i] != prev_coils[i]) {
+//                         std::cout << "[COIL LOG] Coil " << i
+//                                   << ": " << (int)prev_coils[i] << " -> " << (int)mapping->tab_bits[i] << std::endl;
+
+//                         // Update our snapshot
+//                         prev_coils[i] = mapping->tab_bits[i];
+//                     }
+//                 }
+//             }
+
+//         } else if (rc == -1) {
+//             // Connection closed or error
+//             break;
+//         }
+//     }
+// }
+
+void ModbusSimulator::run() {
+    bool connected = false;
 
     // To monitor Holding Registers and Coils
     // Create a buffer to hold the previous state of Holding Registers
@@ -88,57 +163,84 @@ void ModbusSimulator::run() {
         prev_coils[i] = mapping->tab_bits[i];
     }
 
-    while(true){
-
-        int rc = modbus_receive(ctx, query);
-
-        if (rc > 0) {
-            // modbus_reply handles everything:
-            // 1. Decodes function codes (Read Coils, Write Regs, etc.)
-            // 2. Validates address ranges against mb_mapping
-            // 3. Modifies mb_mapping (on Write) or reads from it (on Read)
-            // 4. Sends the response back to the Master
-            modbus_reply(ctx, query, rc, mapping);
-
-            // introspection for write
-            uint8_t function_code = query[FUNCTION_CODE_INDEX];
-
-            // Holding Registers (FC 06, 16)
-            // If query[7] == 0x06: The master wrote a single Register.
-            // If query[7] == 0x10: The master wrote multiple Registers.
-            if (function_code == 0x06 || function_code == 0x10) {
-                // Run the delta-check loop to scan for changes (The "Delta" check)
-                for (int i = 0; i < mapping->nb_registers; ++i) {
-                    if (mapping->tab_registers[i] != prev_registers[i]) {
-                        std::cout << "[REG LOG] Holding Register " << i
-                                  << " changed: " << prev_registers[i]
-                                  << " -> " << mapping->tab_registers[i]
-                                  << std::endl;
-
-                        // Update our snapshot
-                        prev_registers[i] = mapping->tab_registers[i];
-                    }
+    while (true) {
+        if (!connected) {
+            if (type == ModbusConfig::Type::TCP) {
+                // TCP: Setup Listener
+                int server_socket = modbus_tcp_listen(ctx, 1);
+                if (server_socket != -1) {
+                    modbus_tcp_accept(ctx, &server_socket);
+                    connected = true;
+                    std::cout << "TCP Master connected." << std::endl;
+                }
+            } else {
+                // RTU: Simple Connect
+                if (modbus_connect(ctx) != -1) {
+                    connected = true;
+                    std::cout << "RTU Bus connected." << std::endl;
                 }
             }
+        }
 
-            // Coils (FC 05, 15)
-            // If query[7] == 0x05: The master wrote a single Coil.
-            // If query[7] == 0x0f: The master wrote multiple Coils.
-            if (function_code == 0x05 || function_code == 0x0f) {
-                for (int i = 0; i < mapping->nb_bits; ++i) {
-                    if (mapping->tab_bits[i] != prev_coils[i]) {
-                        std::cout << "[COIL LOG] Coil " << i
-                                  << ": " << (int)prev_coils[i] << " -> " << (int)mapping->tab_bits[i] << std::endl;
+        if (connected) {
+            uint8_t query[MODBUS_TCP_MAX_ADU_LENGTH];
+            int rc = modbus_receive(ctx, query);
 
-                        // Update our snapshot
-                        prev_coils[i] = mapping->tab_bits[i];
+            if (rc > 0) {
+                // process_request(ctx, query, rc, mapping); // Your logic with logging
+
+                // modbus_reply handles everything:
+                // 1. Decodes function codes (Read Coils, Write Regs, etc.)
+                // 2. Validates address ranges against mb_mapping
+                // 3. Modifies mb_mapping (on Write) or reads from it (on Read)
+                // 4. Sends the response back to the Master
+                modbus_reply(ctx, query, rc, mapping);
+
+                // introspection for write
+                uint8_t function_code = query[FUNCTION_CODE_INDEX];
+
+                // Holding Registers (FC 06, 16)
+                // If query[7] == 0x06: The master wrote a single Register.
+                // If query[7] == 0x10: The master wrote multiple Registers.
+                if (function_code == 0x06 || function_code == 0x10) {
+                    // Run the delta-check loop to scan for changes (The "Delta" check)
+                    for (int i = 0; i < mapping->nb_registers; ++i) {
+                        if (mapping->tab_registers[i] != prev_registers[i]) {
+                            std::cout << "[REG LOG] Holding Register " << i
+                                      << " changed: " << prev_registers[i]
+                                      << " -> " << mapping->tab_registers[i]
+                                      << std::endl;
+
+                            // Update our snapshot
+                            prev_registers[i] = mapping->tab_registers[i];
+                        }
                     }
                 }
-            }
 
-        } else if (rc == -1) {
-            // Connection closed or error
-            break;
+                // Coils (FC 05, 15)
+                // If query[7] == 0x05: The master wrote a single Coil.
+                // If query[7] == 0x0f: The master wrote multiple Coils.
+                if (function_code == 0x05 || function_code == 0x0f) {
+                    for (int i = 0; i < mapping->nb_bits; ++i) {
+                        if (mapping->tab_bits[i] != prev_coils[i]) {
+                            std::cout << "[COIL LOG] Coil " << i
+                                      << ": " << (int)prev_coils[i] << " -> " << (int)mapping->tab_bits[i] << std::endl;
+
+                            // Update our snapshot
+                            prev_coils[i] = mapping->tab_bits[i];
+                        }
+                    }
+                }
+
+            } else {
+                // Handle Disconnection
+                std::cout << "Connection lost. Resetting..." << std::endl;
+                modbus_close(ctx);
+                connected = false;
+
+                // Optional: Short sleep to prevent CPU hammering during error
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
         }
     }
 }
