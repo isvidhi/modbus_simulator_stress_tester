@@ -1,0 +1,46 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    strategy:
+      matrix:
+        configuration: [Debug, Release]
+        platform: [x86, x64]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Configure Version Headers
+      shell: powershell
+      run: |
+        # Generates required version files if the repository relies on autotools templates
+        if (Test-Path "src/win32/configure.js") {
+            node src/win32/configure.js
+        }
+        # Note: If using a custom solution file, ensure paths match your repository branch structure
+
+    - name: Build libmodbus
+      run: |
+        msbuild src/win32/modbus.sln /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }}
+
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libmodbus-windows-${{ matrix.platform }}-${{ matrix.configuration }}
+        path: |
+          src/win32/${{ matrix.platform }}/${{ matrix.configuration }}/*.dll
+          src/win32/${{ matrix.platform }}/${{ matrix.configuration }}/*.lib
+          src/win32/${{ matrix.platform }}/${{ matrix.configuration }}/*.pdb
