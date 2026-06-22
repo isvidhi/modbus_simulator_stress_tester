@@ -1,0 +1,3 @@
+[submodule "deps/libmodbus_git"]
+	path = deps/libmodbus_git
+	url = https://github.com/stephane/libmodbus.git

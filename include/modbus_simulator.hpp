@@ -8,6 +8,10 @@
 #include <stdexcept>
 #include <chrono>
 #include <thread>
+#include <mutex>
+#include <random>
+#include <algorithm>
+#include <atomic>
 
 #include "include/modbus_config.hpp"
 #include "include/modbus_factory.hpp"
@@ -28,11 +32,15 @@ private:
     bool write_holding_registers(int address, int count, const uint16_t* values);
     // void process_request(ctx, query, rc);
 
+    std::mutex mtx;
+    std::atomic<bool> running{false};
+
 public:
     ModbusSimulator(const ModbusConfig& config);
     ~ModbusSimulator();
     void run();
     void reset_registers();
+    void start_simulation_thread();
 };
 
 #endif // MODBUS_SIMULATOR

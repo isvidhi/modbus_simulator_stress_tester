@@ -27,7 +27,7 @@ int main() {
     config.port = 5020;      // Standard port for Modbus simulations
 
     // Set memory size
-    config.map = {100, 100, 100, 100};
+    config.map = {1000, 1000, 1000, 1000};
 
     try {
         // Create simulator: 100 Coils, 100 Input bits, 100 Holding Regs, 100 Input Regs

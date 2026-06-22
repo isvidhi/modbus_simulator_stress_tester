@@ -50,12 +50,17 @@ ModbusSimulator::ModbusSimulator(const ModbusConfig &config) : type(config.type)
 
 ModbusSimulator::~ModbusSimulator() {
     std::cout << "[ModbuSimulator] dtor ( " << this << " )" << std::endl;
+    running = false; // Signal the background thread to stop
+    // Give the thread a moment to finish its current loop before destroying memory
+    // (Optional: join the thread if you stored the std::thread object)
     if (mapping){
         modbus_mapping_free(mapping);
     }
     // ... cleanup ctx
-    modbus_close(ctx);
-    modbus_free(ctx);
+    if(ctx){
+        modbus_close(ctx);
+        modbus_free(ctx);
+    }
 }
 
 // void ModbusSimulator::run() {
@@ -171,13 +176,22 @@ void ModbusSimulator::run() {
                 if (server_socket != -1) {
                     modbus_tcp_accept(ctx, &server_socket);
                     connected = true;
+                    running = true;
+                    start_simulation_thread();
                     std::cout << "TCP Master connected." << std::endl;
+                }
+                else{
+                    running = false;
                 }
             } else {
                 // RTU: Simple Connect
                 if (modbus_connect(ctx) != -1) {
                     connected = true;
+                    running = true;
                     std::cout << "RTU Bus connected." << std::endl;
+                }
+                else{
+                    running = false;
                 }
             }
         }
@@ -188,6 +202,9 @@ void ModbusSimulator::run() {
 
             if (rc > 0) {
                 // process_request(ctx, query, rc, mapping); // Your logic with logging
+
+                // LOCK during network processing
+                std::lock_guard<std::mutex> lock(mtx);
 
                 // modbus_reply handles everything:
                 // 1. Decodes function codes (Read Coils, Write Regs, etc.)
@@ -250,4 +267,28 @@ void ModbusSimulator::reset_registers() {
     std::fill(mapping->tab_registers, mapping->tab_registers + mapping->nb_registers, 0);
     // Zero out coils
     std::fill(mapping->tab_bits, mapping->tab_bits + mapping->nb_bits, 0);
+}
+
+void ModbusSimulator::ModbusSimulator::start_simulation_thread() {
+    std::cout << "[ModbusSimulator] start_simulation_thread" << std::endl;
+    std::thread([this]() {
+        std::cout << "[ModbusSimulator] start_simulation_thread Lambda" << std::endl;
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<int> delta_dist(-5, 5); // Smooth change
+
+        while (running) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+            std::lock_guard<std::mutex> lock(mtx); // Protect access
+            for (int i = 0; i < mapping->nb_registers; ++i) {
+                int current = mapping->tab_registers[i];
+                int new_val = current + delta_dist(gen);
+                std::cout << "[REG LOG] Holding Register " << i
+                          << ": " << current << " -> " << new_val << std::endl;
+                // Clamp between 0 and 1000
+                mapping->tab_registers[i] = std::max(0, std::min(1000, new_val));
+            }
+        }
+    }).detach();
 }
