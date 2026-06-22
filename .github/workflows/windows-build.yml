@@ -34,7 +34,8 @@ jobs:
 
     - name: Build libmodbus
       run: |
-        msbuild src/win32/modbus.sln /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }}
+        msbuild src/win32/modbus.vcproj /p:Configuration=${{ matrix.configuration }} /p:Platform=${{ matrix.platform }}
+
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
