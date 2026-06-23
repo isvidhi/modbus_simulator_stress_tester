@@ -150,6 +150,16 @@ ModbusSimulator::~ModbusSimulator() {
 
 void ModbusSimulator::run() {
     bool connected = false;
+    int listen_socket = -1;
+
+    // Setup Listener ONCE, outside the loop
+    if (type == ModbusConfig::Type::TCP) {
+        listen_socket = modbus_tcp_listen(ctx, 1);
+        if (listen_socket == -1) {
+            std::cerr << "Fatal: Could not listen: " << modbus_strerror(errno) << std::endl;
+            return;
+        }
+    }
 
     // To monitor Holding Registers and Coils
     // Create a buffer to hold the previous state of Holding Registers
@@ -169,29 +179,46 @@ void ModbusSimulator::run() {
     }
 
     while (true) {
+        std::cout << "while true" << std::endl;
         if (!connected) {
+            std::cout << "while not connected" << std::endl;
             if (type == ModbusConfig::Type::TCP) {
-                // TCP: Setup Listener
-                int server_socket = modbus_tcp_listen(ctx, 1);
+                std::cout << "while not connected for TCP Listner" << std::endl;
+                // Accept using the existing listen_socket
+                int server_socket = modbus_tcp_accept(ctx, &listen_socket);
                 if (server_socket != -1) {
-                    modbus_tcp_accept(ctx, &server_socket);
+                    // modbus_tcp_accept(ctx, &server_socket);
                     connected = true;
                     running = true;
                     start_simulation_thread();
-                    std::cout << "TCP Master connected." << std::endl;
+                    std::cout << "TCP Master connected: " << modbus_strerror(errno) << std::endl;
                 }
                 else{
                     running = false;
+                    std::cout << "TCP Master Not connected: " << modbus_strerror(errno) << std::endl;
+                    if(ctx){
+                        modbus_close(ctx);
+                    }
+                    // If TCP, ensure we reset the internal context state if needed
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
                 }
-            } else {
+            }
+            else {
+                std::cout << "while not connected for RTU Listner" << std::endl;
                 // RTU: Simple Connect
                 if (modbus_connect(ctx) != -1) {
                     connected = true;
                     running = true;
-                    std::cout << "RTU Bus connected." << std::endl;
+                    std::cout << "RTU Bus connected: " << modbus_strerror(errno) << std::endl;
                 }
                 else{
                     running = false;
+                    std::cout << "RTU Master Not connected: " << modbus_strerror(errno) << std::endl;
+                    if(ctx){
+                        modbus_close(ctx);
+                    }
+                    // If TCP, ensure we reset the internal context state if needed
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
                 }
             }
         }
@@ -249,10 +276,32 @@ void ModbusSimulator::run() {
                     }
                 }
 
+                // Extract address and quantity from the query buffer
+                // The address starts at byte 8, quantity at byte 10
+                int address = (query[8] << 8) | query[9];
+                int quantity = (query[10] << 8) | query[11];
+
+                // 1. Read Holding Registers (FC 03) and Input Registers (FC 04)
+                if (function_code == 0x03 || function_code == 0x04) {
+                    std::cout << "[READ LOG] " << (function_code == 0x03 ? "Holding Register" : "Input Register")
+                              << " access: Addr=" << address
+                              << ", Count=" << quantity << std::endl;
+                }
+
+                // 2. Read Coils (FC 01) and Discrete Inputs (FC 02)
+                else if (function_code == 0x01 || function_code == 0x02) {
+                    std::cout << "[READ LOG] " << (function_code == 0x01 ? "Coil" : "Discrete Input")
+                              << " access: Addr=" << address
+                              << ", Count=" << quantity << std::endl;
+                }
+
             } else {
                 // Handle Disconnection
                 std::cout << "Connection lost. Resetting..." << std::endl;
-                modbus_close(ctx);
+
+                // Cleanup current session
+                running = false; // Stop simulation thread
+                modbus_close(ctx); // Close the client connection
                 connected = false;
 
                 // Optional: Short sleep to prevent CPU hammering during error
@@ -284,8 +333,8 @@ void ModbusSimulator::ModbusSimulator::start_simulation_thread() {
             for (int i = 0; i < mapping->nb_registers; ++i) {
                 int current = mapping->tab_registers[i];
                 int new_val = current + delta_dist(gen);
-                std::cout << "[REG LOG] Holding Register " << i
-                          << ": " << current << " -> " << new_val << std::endl;
+                // std::cout << "[REG LOG] Holding Register " << i
+                //           << ": " << current << " -> " << new_val << std::endl;
                 // Clamp between 0 and 1000
                 mapping->tab_registers[i] = std::max(0, std::min(1000, new_val));
             }
