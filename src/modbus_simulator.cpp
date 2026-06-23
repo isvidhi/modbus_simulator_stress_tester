@@ -329,17 +329,52 @@ void ModbusSimulator::ModbusSimulator::start_simulation_thread() {
         std::mt19937 gen(rd());
         std::uniform_int_distribution<int> delta_dist(-5, 5); // Smooth change
 
+        // while (running) {
+        //     std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+        //     std::lock_guard<std::mutex> lock(mtx); // Protect access
+        //     for (int i = 0; i < mapping->nb_registers; ++i) {
+        //         int current = mapping->tab_registers[i];
+        //         int new_val = current + delta_dist(gen);
+        //         // std::cout << "[REG LOG] Holding Register " << i
+        //         //           << ": " << current << " -> " << new_val << std::endl;
+        //         // Clamp between 0 and 1000
+        //         mapping->tab_registers[i] = std::max(0, std::min(1000, new_val));
+        //     }
+        // }
         while (running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            std::lock_guard<std::mutex> lock(mtx);
 
-            std::lock_guard<std::mutex> lock(mtx); // Protect access
-            for (int i = 0; i < mapping->nb_registers; ++i) {
-                int current = mapping->tab_registers[i];
-                int new_val = current + delta_dist(gen);
-                // std::cout << "[REG LOG] Holding Register " << i
-                //           << ": " << current << " -> " << new_val << std::endl;
-                // Clamp between 0 and 1000
-                mapping->tab_registers[i] = std::max(0, std::min(1000, new_val));
+            int current = 0;
+            int new_val = 0;
+
+            // 1. Holding Registers & Input Registers (16-bit)
+            for (int i = 0; i < mapping->nb_registers; ++i){
+                current = mapping->tab_registers[i];
+                apply_strategy_16bit(mapping->tab_registers[i], gen);
+                new_val = mapping->tab_registers[i];
+                std::cout << "[REG LOG] Holding Register addr:" << i << ": " << current << " -> " << new_val << std::endl;
+            }
+            for (int i = 0; i < mapping->nb_input_registers; ++i){
+                current = mapping->tab_input_registers[i];
+                apply_strategy_16bit(mapping->tab_input_registers[i], gen);
+                new_val = mapping->tab_input_registers[i];
+                std::cout << "[I-REG LOG] Input Register addr:" << i << ": " << current << " -> " << new_val << std::endl;
+            }
+
+            // 2. Coils & Discrete Inputs (Boolean/Bit)
+            for (int i = 0; i < mapping->nb_bits; ++i){
+                current = mapping->tab_bits[i];
+                apply_strategy_bit(mapping->tab_bits[i], gen);
+                new_val = mapping->tab_bits[i];
+                std::cout << "[COIL LOG] Coil addr:" << i << ": " << current << " -> " << new_val << std::endl;
+            }
+            for (int i = 0; i < mapping->nb_input_bits; ++i){
+                current = mapping->tab_input_bits[i];
+                apply_strategy_bit(mapping->tab_input_bits[i], gen);
+                new_val = mapping->tab_input_bits[i];
+                std::cout << "[I-COIL LOG] Input Coil addr:" << i << ": " << current << " -> " << new_val << std::endl;
             }
         }
     }).detach();
@@ -348,4 +383,23 @@ void ModbusSimulator::ModbusSimulator::start_simulation_thread() {
 void ModbusSimulator::set_mode(SimMode mode) {
     std::lock_guard<std::mutex> lock(mtx);
     current_mode = mode;
+}
+
+void ModbusSimulator::apply_strategy_16bit(uint16_t &reg, std::mt19937 &gen) {
+    if (current_mode == SimMode::RANDOM) {
+        std::uniform_int_distribution<int> dist(-5, 5);
+        reg = std::max(0, std::min(1000, (int)reg + dist(gen)));
+    }
+    else if (current_mode == SimMode::INCREMENTAL) {
+        reg = (reg + 1) % 1001;
+    }
+}
+
+void ModbusSimulator::apply_strategy_bit(uint8_t &bit, std::mt19937 &gen) {
+    if (current_mode == SimMode::RANDOM) {
+        std::uniform_int_distribution<int> dist(0, 1);
+        bit = dist(gen);
+    }
+    // Manual/Incremental usually don't apply to raw bits,
+    // but you could add a toggle strategy if desired.
 }
