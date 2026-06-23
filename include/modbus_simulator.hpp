@@ -34,6 +34,8 @@ private:
 
     std::mutex mtx;
     std::atomic<bool> running{false};
+    int listen_socket = -1;
+    SimMode current_mode = SimMode::MANUAL;
 
 public:
     ModbusSimulator(const ModbusConfig& config);
@@ -41,6 +43,7 @@ public:
     void run();
     void reset_registers();
     void start_simulation_thread();
+    void set_mode(SimMode mode);
 };
 
 #endif // MODBUS_SIMULATOR

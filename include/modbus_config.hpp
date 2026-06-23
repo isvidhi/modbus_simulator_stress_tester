@@ -5,6 +5,8 @@
 #include <modbus.h>
 #include <string>
 
+enum class SimMode { RANDOM, INCREMENTAL, MANUAL };
+
 struct ModbusMemoryMap {
     int nb_coils = 100;
     int nb_input_bits = 100;

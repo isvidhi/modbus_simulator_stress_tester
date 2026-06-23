@@ -150,7 +150,7 @@ ModbusSimulator::~ModbusSimulator() {
 
 void ModbusSimulator::run() {
     bool connected = false;
-    int listen_socket = -1;
+    listen_socket = -1;
 
     // Setup Listener ONCE, outside the loop
     if (type == ModbusConfig::Type::TCP) {
@@ -179,11 +179,8 @@ void ModbusSimulator::run() {
     }
 
     while (true) {
-        std::cout << "while true" << std::endl;
         if (!connected) {
-            std::cout << "while not connected" << std::endl;
             if (type == ModbusConfig::Type::TCP) {
-                std::cout << "while not connected for TCP Listner" << std::endl;
                 // Accept using the existing listen_socket
                 int server_socket = modbus_tcp_accept(ctx, &listen_socket);
                 if (server_socket != -1) {
@@ -191,7 +188,7 @@ void ModbusSimulator::run() {
                     connected = true;
                     running = true;
                     start_simulation_thread();
-                    std::cout << "TCP Master connected: " << modbus_strerror(errno) << std::endl;
+                    std::cout << "TCP Master connected: " << std::endl;
                 }
                 else{
                     running = false;
@@ -204,12 +201,11 @@ void ModbusSimulator::run() {
                 }
             }
             else {
-                std::cout << "while not connected for RTU Listner" << std::endl;
                 // RTU: Simple Connect
                 if (modbus_connect(ctx) != -1) {
                     connected = true;
                     running = true;
-                    std::cout << "RTU Bus connected: " << modbus_strerror(errno) << std::endl;
+                    std::cout << "RTU Bus connected: " << std::endl;
                 }
                 else{
                     running = false;
@@ -242,13 +238,25 @@ void ModbusSimulator::run() {
 
                 // introspection for write
                 uint8_t function_code = query[FUNCTION_CODE_INDEX];
+                // Extract address and quantity from the query buffer
+                // The address starts at byte 8, quantity at byte 10
+                // The Address Calculation: (query[8] << 8) | query[9]
+                // query[8] << 8: This takes the byte at index 8 and shifts it 8 bits to the left. This moves the value into the "high" position (making it the upper 8 bits of a 16-bit number).
+                // | (Bitwise OR): This combines the shifted high byte with the byte at index 9 (the "low" byte).
+                //     Example: If the address is 200 (which is 0x00C8 in hex):
+                //     query[8] is 0x00
+                //     query[9] is 0xC8
+                //     0x00 << 8 becomes 0x0000 and 0x0000 | 0xC8 = 0x00C8 (Decimal 200).
+                // same logic to extract quantity from 10 and 11 index.
+                int address = (query[8] << 8) | query[9];
+                int quantity = (query[10] << 8) | query[11];
 
                 // Holding Registers (FC 06, 16)
                 // If query[7] == 0x06: The master wrote a single Register.
                 // If query[7] == 0x10: The master wrote multiple Registers.
                 if (function_code == 0x06 || function_code == 0x10) {
                     // Run the delta-check loop to scan for changes (The "Delta" check)
-                    for (int i = 0; i < mapping->nb_registers; ++i) {
+                    for (int i = address; i < quantity; ++i) {
                         if (mapping->tab_registers[i] != prev_registers[i]) {
                             std::cout << "[REG LOG] Holding Register " << i
                                       << " changed: " << prev_registers[i]
@@ -265,7 +273,7 @@ void ModbusSimulator::run() {
                 // If query[7] == 0x05: The master wrote a single Coil.
                 // If query[7] == 0x0f: The master wrote multiple Coils.
                 if (function_code == 0x05 || function_code == 0x0f) {
-                    for (int i = 0; i < mapping->nb_bits; ++i) {
+                    for (int i = address; i < quantity; ++i) {
                         if (mapping->tab_bits[i] != prev_coils[i]) {
                             std::cout << "[COIL LOG] Coil " << i
                                       << ": " << (int)prev_coils[i] << " -> " << (int)mapping->tab_bits[i] << std::endl;
@@ -276,19 +284,14 @@ void ModbusSimulator::run() {
                     }
                 }
 
-                // Extract address and quantity from the query buffer
-                // The address starts at byte 8, quantity at byte 10
-                int address = (query[8] << 8) | query[9];
-                int quantity = (query[10] << 8) | query[11];
-
-                // 1. Read Holding Registers (FC 03) and Input Registers (FC 04)
+                // Read Holding Registers (FC 03) and Input Registers (FC 04)
                 if (function_code == 0x03 || function_code == 0x04) {
                     std::cout << "[READ LOG] " << (function_code == 0x03 ? "Holding Register" : "Input Register")
                               << " access: Addr=" << address
                               << ", Count=" << quantity << std::endl;
                 }
 
-                // 2. Read Coils (FC 01) and Discrete Inputs (FC 02)
+                // Read Coils (FC 01) and Discrete Inputs (FC 02)
                 else if (function_code == 0x01 || function_code == 0x02) {
                     std::cout << "[READ LOG] " << (function_code == 0x01 ? "Coil" : "Discrete Input")
                               << " access: Addr=" << address
@@ -340,4 +343,9 @@ void ModbusSimulator::ModbusSimulator::start_simulation_thread() {
             }
         }
     }).detach();
+}
+
+void ModbusSimulator::set_mode(SimMode mode) {
+    std::lock_guard<std::mutex> lock(mtx);
+    current_mode = mode;
 }
